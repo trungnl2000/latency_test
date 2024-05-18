@@ -70,28 +70,28 @@ class Conv2dHOSVDop_with_var(Function):
     @staticmethod
     def forward(ctx: Any, *args: Any, **kwargs: Any) -> Any:
         start_time = time.time()
-        input, weight, bias, stride, dilation, padding, groups, var = args
+        input, weight, bias, stride, dilation, padding, groups, var, current_index, forward_time, backward_time = args
 
         output = conv2d(input, weight, bias, stride, padding, dilation=dilation, groups=groups)
 
 
         S, u0, u1, u2, u3 = hosvd(input, var=var)
-        ctx.save_for_backward(S, u0, u1, u2, u3, weight, bias)
+        ctx.save_for_backward(S, u0, u1, u2, u3, weight, bias, th.tensor([current_index]), backward_time)
 
         ctx.stride = stride
         ctx.padding = padding 
         ctx.dilation = dilation
         ctx.groups = groups
 
-        forward_time = time.time() - start_time
-        print("Forward time:", forward_time * 1000, " ms")
+        forward_time[current_index] = (time.time() - start_time)*1000
+        # print("Forward time:", forward_time * 1000, " ms")
         return output
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs: Any) -> Any:
         start_time = time.time()
 
-        S, u0, u1, u2, u3, weight, bias = ctx.saved_tensors
+        S, u0, u1, u2, u3, weight, bias, current_index, backward_time = ctx.saved_tensors
         input = restore_hosvd(S, u0, u1, u2, u3)
 
          
@@ -110,9 +110,9 @@ class Conv2dHOSVDop_with_var(Function):
         if bias is not None and ctx.needs_input_grad[2]:
             grad_bias = grad_output.sum((0,2,3)).squeeze(0)
 
-        backward_time = time.time() - start_time
-        print("Backward time:", backward_time * 1000, " ms")
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None
+        backward_time[current_index[0]] = (time.time() - start_time)*1000
+        # print("Backward time:", backward_time * 1000, " ms")
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None
 
 class Conv2dHOSVD_with_var(nn.Conv2d):
     def __init__(
@@ -128,7 +128,10 @@ class Conv2dHOSVD_with_var(nn.Conv2d):
             device=None,
             dtype=None,
             activate=False,
-            var=1
+            var=1,
+            forward_time=0,
+            current_index=0,
+            backward_time=0
     ) -> None:
         if kernel_size is int:
             kernel_size = [kernel_size, kernel_size]
@@ -150,16 +153,19 @@ class Conv2dHOSVD_with_var(nn.Conv2d):
                                         dtype=dtype)
         self.activate = activate
         self.var = var
+        self.forward_time = forward_time
+        self.current_index = current_index
+        self.backward_time = backward_time
 
     def forward(self, x: th.Tensor) -> th.Tensor:
         # x, weight, bias, stride, padding, order, groups = args
         if self.activate:
-            y = Conv2dHOSVDop_with_var.apply(x, self.weight, self.bias, self.stride, self.dilation, self.padding, self.groups, self.var)
+            y = Conv2dHOSVDop_with_var.apply(x, self.weight, self.bias, self.stride, self.dilation, self.padding, self.groups, self.var, self.current_index, self.forward_time, self.backward_time)
         else:
             y = super().forward(x)
         return y
 
-def wrap_convHOSVD_with_var_layer(conv, SVD_var, active):
+def wrap_convHOSVD_with_var_layer(conv, SVD_var, active, current_index, forward_time, backward_time):
     new_conv = Conv2dHOSVD_with_var(in_channels=conv.in_channels,
                          out_channels=conv.out_channels,
                          kernel_size=conv.kernel_size,
@@ -169,7 +175,10 @@ def wrap_convHOSVD_with_var_layer(conv, SVD_var, active):
                          groups=conv.groups,
                          padding=conv.padding,
                          activate=active,
-                         var=SVD_var
+                         var=SVD_var,
+                         current_index=current_index,
+                         forward_time = forward_time,
+                         backward_time = backward_time
                          )
     new_conv.weight.data = conv.weight.data
     if new_conv.bias is not None:
