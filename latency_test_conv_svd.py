@@ -43,7 +43,10 @@ def main(**kwargs):
     print("_____SVD conv_____")
     forward_time = th.zeros(number_of_iteration)
     backward_time = th.zeros(number_of_iteration)
+    seed = 233  # Initial seed value
     for i in range(number_of_iteration):
+        # Set the seed for random number generation
+        th.manual_seed(seed + i)
         # Generate input data
         data = th.randn(batch_size, in_channels, height, width).to(device)
         labels = th.randint(0, 10, (batch_size,)).long().to(device)
