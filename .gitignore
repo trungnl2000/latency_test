@@ -3,3 +3,5 @@ __pycache__/
 *cpython*
 latency_test_new/
 latency_test_old/
+*.out
+result/

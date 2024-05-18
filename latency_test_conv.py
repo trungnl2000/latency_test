@@ -1,6 +1,7 @@
 import torch as th
 import torch.nn as nn
 import argparse
+import os
 
 from custom_op.conv import wrap_conv
 
@@ -11,6 +12,16 @@ class ConvLayer(nn.Module):
 
     def forward(self, x):
         return self.conv(x)
+
+def write_to_file(filename, header, data):
+    if not os.path.exists("result"):
+        os.mkdir("result")
+    filename = os.path.join("result", filename)
+    file_exists = os.path.isfile(filename)
+    with open(filename, 'a') as f:
+        if not file_exists:
+            f.write(header + "\n")
+        f.write(data + "\n")
     
 def main(**kwargs):
     # Unpack values from kwargs
@@ -22,19 +33,22 @@ def main(**kwargs):
     batch_size = kwargs["batch_size"]
     height = kwargs["height"]
     width = kwargs["width"]
+    output_file = kwargs["output_file"] + "_" + device + ".out"
 
     # Loss function
     criterion = nn.CrossEntropyLoss()
 
-    # Generate input data
-    data = th.randn(batch_size, in_channels, height, width).to(device)
-    labels = th.randint(0, 10, (batch_size,)).long().to(device)
+    
 
     ####################################################
     print("_____Normal conv_____")
     forward_time = th.zeros(number_of_iteration)
     backward_time = th.zeros(number_of_iteration)
     for i in range(number_of_iteration):
+        # Generate input data
+        data = th.randn(batch_size, in_channels, height, width).to(device)
+        labels = th.randint(0, 10, (batch_size,)).long().to(device)
+        # Create layer
         conv_layer = ConvLayer(in_channels, out_channels=out_channels, kernel_size=kernel_size, current_index=i, 
                             forward_time=forward_time, backward_time=backward_time).to(device)
         # Forward pass
@@ -48,6 +62,11 @@ def main(**kwargs):
     print("Average forward time: ", forward_time_mean.item(), " ms")
     print("Average backward time: ", backward_time_mean.item(), " ms")
 
+    # Prepare data to write
+    header = "device number_of_iteration in_channels out_channels kernel_size batch_size height width forward_time_mean(ms) backward_time_mean(ms)"
+    data = f"{device} {number_of_iteration-1} {in_channels} {out_channels} {kernel_size} {batch_size} {height} {width} {forward_time_mean.item()} {backward_time_mean.item()}"
+    write_to_file(output_file, header, data)
+
 # Set up argparse to get command line arguments
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Choose device and parameters to run the program.")
@@ -59,6 +78,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=128, help="Batch size.")
     parser.add_argument("--height", type=int, default=7, help="Height of input data.")
     parser.add_argument("--width", type=int, default=7, help="Width of input data.")
+    parser.add_argument("--output_file", type=str, default="latency_test_conv", help="Output file to write results.")
     args = parser.parse_args()
 
     # Choose device based on command line argument

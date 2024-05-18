@@ -1,6 +1,7 @@
 import torch as th
 import torch.nn as nn
 import argparse
+import os
 
 from custom_op.conv_hosvd_with_var import wrap_convHOSVD_with_var_layer
  
@@ -12,7 +13,17 @@ class ConvLayer_hosvd(nn.Module):
 
     def forward(self, x):
         return self.conv(x)
-    
+
+def write_to_file(filename, header, data):
+    if not os.path.exists("result"):
+        os.mkdir("result")
+    filename = os.path.join("result", filename)
+    file_exists = os.path.isfile(filename)
+    with open(filename, 'a') as f:
+        if not file_exists:
+            f.write(header + "\n")
+        f.write(data + "\n")
+
 def main(**kwargs):
     # Unpack values from kwargs
     device = kwargs["device"]
@@ -24,6 +35,7 @@ def main(**kwargs):
     height = kwargs["height"]
     width = kwargs["width"]
     SVD_var = kwargs["SVD_var"]
+    output_file = kwargs["output_file"] + "_" + device + ".out"
     # Loss function
     criterion = nn.CrossEntropyLoss()
     
@@ -50,6 +62,11 @@ def main(**kwargs):
     print("Average forward time: ", forward_time_mean.item(), " ms")
     print("Average backward time: ", backward_time_mean.item(), " ms")
 
+    # Prepare data to write
+    header = "device number_of_iteration in_channels out_channels kernel_size batch_size height width SVD_var forward_time_mean(ms) backward_time_mean(ms)"
+    data = f"{device} {number_of_iteration-1} {in_channels} {out_channels} {kernel_size} {batch_size} {height} {width} {SVD_var} {forward_time_mean.item()} {backward_time_mean.item()}"
+    write_to_file(output_file, header, data)
+
 # Set up argparse to get command line arguments
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Choose device and parameters to run the program.")
@@ -62,6 +79,7 @@ if __name__ == "__main__":
     parser.add_argument("--height", type=int, default=7, help="Height of input data.")
     parser.add_argument("--width", type=int, default=7, help="Width of input data.")
     parser.add_argument("--SVD_var", type=float, default=0.8, help="Variance of HOSVD")
+    parser.add_argument("--output_file", type=str, default="latency_test_conv_hosvd", help="Output file to write results.")
     args = parser.parse_args()
 
     # Choose device based on command line argument
