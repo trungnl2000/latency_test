@@ -9,11 +9,11 @@ import time
 ###### SVD by choosing principle components based on variance
 
 # Cho 2 chiều
-def truncated_svd(X, var=0.9, dim=0, driver=None):
+def truncated_svd(X, var=0.9, dim=0):
     # dim là số chiều mà mình sẽ svd theo
     n_samples, n_features = th.prod(th.tensor(X.shape[:dim+1])), th.prod(th.tensor(X.shape[dim+1:]))
     X_reshaped = X.view(n_samples, n_features)
-    U, S, Vt = th.linalg.svd(X_reshaped, full_matrices=False, driver=driver)
+    U, S, Vt = th.linalg.svd(X_reshaped, full_matrices=False)
     total_variance = th.sum(S**2)
 
     explained_variance = th.cumsum(S**2, dim=0) / total_variance

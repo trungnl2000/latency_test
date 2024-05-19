@@ -17,9 +17,9 @@ def unfolding(n, A):
     sizelist[0] = n
     return A.permute(sizelist).reshape(shape[n], lsize)
 
-def truncated_svd(X, var=0.9, driver=None):
+def truncated_svd(X, var=0.9):
     # X is 2D tensor
-    U, S, Vt = th.linalg.svd(X, full_matrices=False, driver=driver)
+    U, S, Vt = th.linalg.svd(X, full_matrices=False)
     total_variance = th.sum(S**2)
 
     explained_variance = th.cumsum(S**2, dim=0) / total_variance
@@ -33,24 +33,24 @@ def truncated_svd(X, var=0.9, driver=None):
         k = explained_variance.argmax().item() + 1
     return U[:, :k], S[:k], Vt[:k, :]
 
-def modalsvd(n, A, var, driver):
+def modalsvd(n, A, var):
     nA = unfolding(n, A)
     # return torch.svd(nA)
-    return truncated_svd(nA, var, driver)
+    return truncated_svd(nA, var)
 
-def hosvd(A, var=0.9, driver=None):
+def hosvd(A, var=0.9):
     S = A.clone()
     
-    u0, _, _ = modalsvd(0, A, var, driver)
+    u0, _, _ = modalsvd(0, A, var)
     S = th.tensordot(S, u0, dims=([0], [0]))
 
-    u1, _, _ = modalsvd(1, A, var, driver)
+    u1, _, _ = modalsvd(1, A, var)
     S = th.tensordot(S, u1, dims=([0], [0]))
 
-    u2, _, _ = modalsvd(2, A, var, driver)
+    u2, _, _ = modalsvd(2, A, var)
     S = th.tensordot(S, u2, dims=([0], [0]))
 
-    u3, _, _ = modalsvd(3, A, var, driver)
+    u3, _, _ = modalsvd(3, A, var)
     S = th.tensordot(S, u3, dims=([0], [0]))
     return S, u0, u1, u2, u3
 
