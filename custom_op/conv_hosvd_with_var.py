@@ -39,20 +39,21 @@ def modalsvd(n, A, var):
     return truncated_svd(nA, var)
 
 def hosvd(A, var=0.9):
-    S = A.clone()
+    # S = A.clone()
     
     u0, _, _ = modalsvd(0, A, var)
-    S = th.tensordot(S, u0, dims=([0], [0]))
+    # S = th.tensordot(S, u0, dims=([0], [0]))
 
-    u1, _, _ = modalsvd(1, A, var)
-    S = th.tensordot(S, u1, dims=([0], [0]))
+    # u1, _, _ = modalsvd(1, A, var)
+    # S = th.tensordot(S, u1, dims=([0], [0]))
 
-    u2, _, _ = modalsvd(2, A, var)
-    S = th.tensordot(S, u2, dims=([0], [0]))
+    # u2, _, _ = modalsvd(2, A, var)
+    # S = th.tensordot(S, u2, dims=([0], [0]))
 
-    u3, _, _ = modalsvd(3, A, var)
-    S = th.tensordot(S, u3, dims=([0], [0]))
-    return S, u0, u1, u2, u3
+    # u3, _, _ = modalsvd(3, A, var)
+    # S = th.tensordot(S, u3, dims=([0], [0]))
+    # return S, u0, u1, u2, u3
+    return u0
 
 def restore_hosvd(S, u0, u1, u2, u3):
     # Initialize the restored tensor
@@ -75,8 +76,10 @@ class Conv2dHOSVDop_with_var(Function):
         output = conv2d(input, weight, bias, stride, padding, dilation=dilation, groups=groups)
 
 
-        S, u0, u1, u2, u3 = hosvd(input, var=var)
-        ctx.save_for_backward(S, u0, u1, u2, u3, weight, bias, th.tensor([current_index]), backward_time)
+        # S, u0, u1, u2, u3 = hosvd(input, var=var)
+        u0 = hosvd(input, var=var)
+        # ctx.save_for_backward(S, u0, u1, u2, u3, weight, bias, th.tensor([current_index]), backward_time)
+        ctx.save_for_backward(input, weight, bias, th.tensor([current_index]), backward_time)
 
         ctx.stride = stride
         ctx.padding = padding 
@@ -91,8 +94,9 @@ class Conv2dHOSVDop_with_var(Function):
     def backward(ctx: Any, *grad_outputs: Any) -> Any:
         start_time = time.time()
 
-        S, u0, u1, u2, u3, weight, bias, current_index, backward_time = ctx.saved_tensors
-        input = restore_hosvd(S, u0, u1, u2, u3)
+        input, weight, bias, current_index, backward_time = ctx.saved_tensors
+        # S, u0, u1, u2, u3, weight, bias, current_index, backward_time = ctx.saved_tensors
+        # input = restore_hosvd(S, u0, u1, u2, u3)
 
          
         stride = ctx.stride
