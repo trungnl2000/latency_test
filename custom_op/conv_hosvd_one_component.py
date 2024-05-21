@@ -26,7 +26,7 @@ def truncated_svd(
     var: float = 0.9
 ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
     m, n = X.shape
-    Q = th.randn(n, k + n_oversamples)
+    Q = th.randn(n, k + n_oversamples).to(X.device)
     Q = X @ Q
 
     Q, _ = th.linalg.qr(Q)

@@ -23,7 +23,7 @@ def truncated_svd(#X, var=0.9, dim=0):
     X_reshaped = X.view(n_samples, n_features)
 
     m, n = X_reshaped.shape
-    Q = th.randn(n, k + n_oversamples)
+    Q = th.randn(n, k + n_oversamples).to(X_reshaped.device)
     Q = X_reshaped @ Q
 
     Q, _ = th.linalg.qr(Q)
