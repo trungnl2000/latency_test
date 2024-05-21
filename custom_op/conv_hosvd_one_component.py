@@ -6,7 +6,7 @@ import torch.nn as nn
 import time
 from typing import Tuple, List
 
-###### HOSVD base on variance #############
+###### New HOSVD => only take one principal component (don't care about variance) #####
 
 def unfolding(n, A):
     shape = A.shape
@@ -43,19 +43,6 @@ def truncated_svd(
     # (USVt)t = VStUt
     Va, S, R = th.linalg.svd(QA.t(), full_matrices=False)
     U = Q @ R.t()
-
-    # total_variance = th.sum(S**2)
-    # explained_variance = th.cumsum(S**2, dim=0) / total_variance
-    # # k = (explained_variance >= var).nonzero()[0].item() + 1
-    # nonzero_indices = (explained_variance >= var).nonzero()
-    # if len(nonzero_indices) > 0:
-    #     # Nếu có ít nhất một phần tử >= var
-    #     k = nonzero_indices[0].item() + 1
-    # else:
-    #     # Nếu không có phần tử nào >= var, gán k bằng vị trí của phần tử lớn nhất
-    #     k = explained_variance.argmax().item() + 1
-
-
     return U[:, :k], S[:k], Va.t()[:k, :]
 
 def modalsvd(n, A, var):
@@ -68,16 +55,15 @@ def hosvd(A, var=0.9):
     u0, _, _ = modalsvd(0, A, var)
     S = th.tensordot(S, u0, dims=([0], [0]))
 
-    # u1, _, _ = modalsvd(1, A, var)
-    # S = th.tensordot(S, u1, dims=([0], [0]))
+    u1, _, _ = modalsvd(1, A, var)
+    S = th.tensordot(S, u1, dims=([0], [0]))
 
-    # u2, _, _ = modalsvd(2, A, var)
-    # S = th.tensordot(S, u2, dims=([0], [0]))
+    u2, _, _ = modalsvd(2, A, var)
+    S = th.tensordot(S, u2, dims=([0], [0]))
 
-    # u3, _, _ = modalsvd(3, A, var)
-    # S = th.tensordot(S, u3, dims=([0], [0]))
-    # return S, u0, u1, u2, u3
-    return u0
+    u3, _, _ = modalsvd(3, A, var)
+    S = th.tensordot(S, u3, dims=([0], [0]))
+    return S, u0, u1, u2, u3
 
 def restore_hosvd(S, u0, u1, u2, u3):
     # Initialize the restored tensor
@@ -100,11 +86,8 @@ class Conv2dHOSVDop_one_component(Function):
         output = conv2d(input, weight, bias, stride, padding, dilation=dilation, groups=groups)
 
 
-        # S, u0, u1, u2, u3 = hosvd(input, var=var)
-        # ctx.save_for_backward(S, u0, u1, u2, u3, weight, bias, th.tensor([current_index]), backward_time)
-        hosvd(input, var=var)
-
-        ctx.save_for_backward(input, weight, bias, th.tensor([current_index]), backward_time)
+        S, u0, u1, u2, u3 = hosvd(input, var=var)
+        ctx.save_for_backward(S, u0, u1, u2, u3, weight, bias, th.tensor([current_index]), backward_time)
 
         ctx.stride = stride
         ctx.padding = padding 
@@ -119,9 +102,8 @@ class Conv2dHOSVDop_one_component(Function):
     def backward(ctx: Any, *grad_outputs: Any) -> Any:
         start_time = time.time()
 
-        # S, u0, u1, u2, u3, weight, bias, current_index, backward_time = ctx.saved_tensors
-        # input = restore_hosvd(S, u0, u1, u2, u3)
-        input, weight, bias, current_index, backward_time = ctx.saved_tensors
+        S, u0, u1, u2, u3, weight, bias, current_index, backward_time = ctx.saved_tensors
+        input = restore_hosvd(S, u0, u1, u2, u3)
         
 
          
