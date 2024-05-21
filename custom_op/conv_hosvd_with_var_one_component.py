@@ -4,7 +4,7 @@ from typing import Any
 from torch.nn.functional import conv2d
 import torch.nn as nn
 import time
-
+from typing import Tuple, List
 
 ###### HOSVD base on variance #############
 
@@ -17,11 +17,34 @@ def unfolding(n, A):
     sizelist[0] = n
     return A.permute(sizelist).reshape(shape[n], lsize)
 
-def truncated_svd(X, var=0.9):
-    # X is 2D tensor
-    U, S, Vt = th.linalg.svd(X, full_matrices=False)
-    total_variance = th.sum(S**2)
 
+def truncated_svd(
+    X: th.Tensor,
+    k: int=1,
+    n_iter: int = 2,
+    n_oversamples: int = 8,
+    var: float = 0.9
+) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+    m, n = X.shape
+    Q = th.randn(n, k + n_oversamples)
+    Q = X @ Q
+
+    Q, _ = th.linalg.qr(Q)
+
+    # Power iterations
+    for _ in range(n_iter):
+        Q = (Q.t() @ X).t()
+        Q, _ = th.linalg.qr(Q)
+        Q = X @ Q
+        Q, _ = th.linalg.qr(Q)
+
+    QA = Q.t() @ X
+    # Transpose QA to make it tall-skinny as MAGMA has optimisations for this
+    # (USVt)t = VStUt
+    Va, S, R = th.linalg.svd(QA.t(), full_matrices=False)
+    U = Q @ R.t()
+
+    # total_variance = th.sum(S**2)
     # explained_variance = th.cumsum(S**2, dim=0) / total_variance
     # # k = (explained_variance >= var).nonzero()[0].item() + 1
     # nonzero_indices = (explained_variance >= var).nonzero()
@@ -31,13 +54,13 @@ def truncated_svd(X, var=0.9):
     # else:
     #     # Nếu không có phần tử nào >= var, gán k bằng vị trí của phần tử lớn nhất
     #     k = explained_variance.argmax().item() + 1
-    k=1
-    return U[:, :k], S[:k], Vt[:k, :]
+
+
+    return U[:, :k], S[:k], Va.t()[:k, :]
 
 def modalsvd(n, A, var):
     nA = unfolding(n, A)
-    # return torch.svd(nA)
-    return truncated_svd(nA, var)
+    return truncated_svd(X=nA, k=1)
 
 def hosvd(A, var=0.9):
     S = A.clone()
@@ -67,7 +90,7 @@ def restore_hosvd(S, u0, u1, u2, u3):
     return restored_tensor
 
 ###############################################################
-class Conv2dHOSVDop_with_var(Function):
+class Conv2dHOSVDop_one_component(Function):
     @staticmethod
     def forward(ctx: Any, *args: Any, **kwargs: Any) -> Any:
         start_time = time.time()
@@ -115,7 +138,7 @@ class Conv2dHOSVDop_with_var(Function):
         # print("Backward time:", backward_time * 1000, " ms")
         return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None
 
-class Conv2dHOSVD_with_var(nn.Conv2d):
+class Conv2dHOSVD_one_component(nn.Conv2d):
     def __init__(
             self,
             in_channels: int,
@@ -141,7 +164,7 @@ class Conv2dHOSVD_with_var(nn.Conv2d):
         if dilation is int:
             dilation = [dilation, dilation]
         # assert padding[0] == kernel_size[0] // 2 and padding[1] == kernel_size[1] // 2
-        super(Conv2dHOSVD_with_var, self).__init__(in_channels=in_channels,
+        super(Conv2dHOSVD_one_component, self).__init__(in_channels=in_channels,
                                         out_channels=out_channels,
                                         kernel_size=kernel_size,
                                         stride=stride,
@@ -161,13 +184,13 @@ class Conv2dHOSVD_with_var(nn.Conv2d):
     def forward(self, x: th.Tensor) -> th.Tensor:
         # x, weight, bias, stride, padding, order, groups = args
         if self.activate:
-            y = Conv2dHOSVDop_with_var.apply(x, self.weight, self.bias, self.stride, self.dilation, self.padding, self.groups, self.var, self.current_index, self.forward_time, self.backward_time)
+            y = Conv2dHOSVDop_one_component.apply(x, self.weight, self.bias, self.stride, self.dilation, self.padding, self.groups, self.var, self.current_index, self.forward_time, self.backward_time)
         else:
             y = super().forward(x)
         return y
 
-def wrap_convHOSVD_with_var_layer(conv, SVD_var, active, current_index, forward_time, backward_time):
-    new_conv = Conv2dHOSVD_with_var(in_channels=conv.in_channels,
+def wrap_convHOSVD_one_component_layer(conv, SVD_var, active, current_index, forward_time, backward_time):
+    new_conv = Conv2dHOSVD_one_component(in_channels=conv.in_channels,
                          out_channels=conv.out_channels,
                          kernel_size=conv.kernel_size,
                          stride=conv.stride,
