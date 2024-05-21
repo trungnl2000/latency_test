@@ -5,6 +5,8 @@ from torch.nn.functional import conv2d
 import torch.nn as nn
 import time
 from typing import Tuple, List
+from sklearn.decomposition import TruncatedSVD
+import numpy as np
 
 ###### New HOSVD => only take one principal component (don't care about variance) #####
 
@@ -25,25 +27,41 @@ def truncated_svd(
     n_oversamples: int = 8,
     var: float = 0.9
 ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
-    m, n = X.shape
-    Q = th.randn(n, k + n_oversamples).to(X.device)
-    Q = X @ Q
+    # m, n = X.shape
+    # Q = th.randn(n, k + n_oversamples).to(X.device)
+    # Q = X @ Q
 
-    Q, _ = th.linalg.qr(Q)
+    # Q, _ = th.linalg.qr(Q)
 
-    # Power iterations
-    for _ in range(n_iter):
-        Q = (Q.t() @ X).t()
-        Q, _ = th.linalg.qr(Q)
-        Q = X @ Q
-        Q, _ = th.linalg.qr(Q)
+    # # Power iterations
+    # for _ in range(n_iter):
+    #     Q = (Q.t() @ X).t()
+    #     Q, _ = th.linalg.qr(Q)
+    #     Q = X @ Q
+    #     Q, _ = th.linalg.qr(Q)
 
-    QA = Q.t() @ X
-    # Transpose QA to make it tall-skinny as MAGMA has optimisations for this
-    # (USVt)t = VStUt
-    Va, S, R = th.linalg.svd(QA.t(), full_matrices=False)
-    U = Q @ R.t()
-    return U[:, :k], S[:k], Va.t()[:k, :]
+    # QA = Q.t() @ X
+    # # Transpose QA to make it tall-skinny as MAGMA has optimisations for this
+    # # (USVt)t = VStUt
+    # Va, S, R = th.linalg.svd(QA.t(), full_matrices=False)
+    # U = Q @ R.t()
+
+    svd = TruncatedSVD(n_components=1, n_iter=1, n_oversamples=1)
+    X = X.numpy()
+    T = svd.fit_transform(X)
+
+    # Get singular values (S)
+    S = svd.singular_values_
+
+    # Get V^T (components)
+    V = svd.components_
+
+    # Calculate U from T and S
+    U = T / S
+
+
+    # return U[:, :k], S[:k], Va.t()[:k, :]
+    return th.from_numpy(U), th.from_numpy(S), th.from_numpy(V).t()
 
 def modalsvd(n, A, var):
     nA = unfolding(n, A)
