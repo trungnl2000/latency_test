@@ -20,7 +20,7 @@ def unfolding(n, A):
 def truncated_svd(X, var=0.9):
     # X is 2D tensor
     U, S, Vt = th.linalg.svd(X, full_matrices=False)
-    total_variance = th.sum(S**2)
+    # total_variance = th.sum(S**2)
 
     # explained_variance = th.cumsum(S**2, dim=0) / total_variance
     # # k = (explained_variance >= var).nonzero()[0].item() + 1
